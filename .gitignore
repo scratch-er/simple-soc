@@ -1,0 +1,8 @@
+build/
+target/
+project/
+.bsp/
+.bloop/
+.metals/
+.vscode/
+.cache/
