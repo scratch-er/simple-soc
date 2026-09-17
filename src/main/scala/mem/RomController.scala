@@ -10,10 +10,8 @@ class RomController extends Module {
         val rom = Flipped(new RomInterface)
     })
 
-    private val respValid = RegNext(io.bus.reqValid, false.B)
-
     io.rom.addr := io.bus.addr
     io.rom.ren := io.bus.reqValid
-    io.bus.respValid := respValid
+    io.bus.respValid := ShiftRegister(io.bus.reqValid, 1)
     io.bus.rdata := io.rom.rdata
 }

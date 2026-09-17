@@ -15,6 +15,19 @@ class DataInterface extends InstrInterface {
     val wen       = Input(Bool())
     val wdata     = Input(UInt(32.W))
     val wmask     = Input(UInt(4.W))
+
+    def asIfu: InstrInterface = {
+        val ifu = Wire(new InstrInterface)
+        ifu.reqValid <> reqValid
+        ifu.addr <> addr
+        ifu.respValid <> respValid
+        ifu.rdata <> rdata
+        size := 0b10.U(2.W)
+        wen := false.B
+        wdata := 0.U(32.W)
+        wmask := 0b1111.U(4.W)
+        ifu
+    }
 }
 
 class IfuReq extends Bundle {
