@@ -4,6 +4,11 @@ import chisel3._
 import chisel3.util._
 import simplesoc.bus.DataInterface
 
+class UartPins extends Bundle  {
+    val tx = Output(Bool())
+    val rx = Input(Bool())
+}
+
 class UartTxCapture extends ExtModule {
     val clock = IO(Input(Clock()))
     val io = IO(new Bundle {
@@ -15,10 +20,7 @@ class UartTxCapture extends ExtModule {
 class Uart(debug: Boolean=false) extends Module {
     val io = IO(new Bundle {
         val bus = new DataInterface
-        val pins = new Bundle {
-            val tx = Output(Bool())
-            val rx = Input(Bool())
-        }
+        val pins = new UartPins
     })
 
     val rx = Module(new UartRx)

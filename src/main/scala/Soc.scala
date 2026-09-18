@@ -3,61 +3,118 @@ package simplesoc
 import chisel3._
 import chisel3.util._
 import simplesoc.bus._
-import simplesoc.mem.RomController
-import simplesoc.mem.SramController
-
-class Npc extends ExtModule {
-    val clock = IO(Input(Clock()))
-    val reset = IO(Input(Bool()))
-    val io = IO(new Bundle {
-        val ifu = Flipped(new InstrInterface)
-        val lsu = Flipped(new DataInterface)
-    })
-}
-
-class SimulatedMem extends ExtModule {
-    val clock = IO(Input(Clock()))
-    val io = IO(new SramInterface)
-}
-
-class SimulatedRom extends Module {
-    val io = IO(new RomInterface)
-
-    val mem = Module(new SimulatedMem)
-    mem.clock := clock
-    mem.io.addr := io.addr
-    mem.io.ren := io.ren
-    io.rdata := mem.io.rdata
-    mem.io.wen := false.B
-    mem.io.wdata := 0.U(32.W)
-}
-
-class SimulatedSram extends Module {
-    val io = IO(new SramInterface)
-
-    val mem = Module(new SimulatedMem)
-    mem.clock := clock
-    mem.io <> io
-}
+import simplesoc.mem._
+import simplesoc.uart._
+import simplesoc.gpio._
 
 class SimTop extends Module {
-    val core = Module(new Npc)
+    val externalPins = IO(new Bundle {
+        val uart0 = new UartPins
+        val mygpio = new Bundle {
+            val out = Output(UInt(32.W))
+            val in = Input(UInt(32.W))
+            val seg = Output(Vec(8, UInt(8.W)))
+        }
+    })
+
+    val core = Module(new SimCpuCore)
+    val interConnect = Module(new Interconnect(2, Seq(
+        0x10000000l.U(32.W) -> (31, 28),
+        0x30000000l.U(32.W) -> (31, 28),
+        0x80000000l.U(32.W) -> (31, 28),
+    )))
+    val mmioXbar = Module(new Crossbar(Seq(
+        0x10000000l.U(32.W) -> (15, 12),
+        0x10001000l.U(32.W) -> (15, 12),
+        0x10002000l.U(32.W) -> (15, 12),
+        0x10003000l.U(32.W) -> (15, 12),
+    )))
     val romController = Module(new RomController)
     val ramController = Module(new SramController)
+    val uart0 = Module(new Uart(true))
+    val uart1 = Module(new Uart(true))
+    val gpio0 = Module(new Gpio)
+    val gpio1 = Module(new Gpio)
     val rom = Module(new SimulatedRom)
     val ram = Module(new SimulatedSram)
+    val segmentDecoders = Seq.fill(8)(Module(new SegmentDecoder))
 
-    core.clock := clock
-    core.reset := reset
-    romController.io.bus.reqValid := core.io.ifu.reqValid
-    romController.io.bus.addr := core.io.ifu.addr
-    romController.io.bus.size := 0b10.U(2.W)
-    romController.io.bus.wen := false.B
-    romController.io.bus.wmask := 0b1111.U(4.W)
-    romController.io.bus.wdata := 0.U(32.W)
-    core.io.ifu.respValid := romController.io.bus.respValid
-    core.io.ifu.rdata := romController.io.bus.rdata
-    core.io.lsu <> ramController.io.bus
+    core.io.ifu <> interConnect.io.masters(0).asIfu
+    core.io.lsu <> interConnect.io.masters(1)
+    interConnect.io.slaves(0) <> mmioXbar.io.master
+    interConnect.io.slaves(1) <> romController.io.bus
+    interConnect.io.slaves(2) <> ramController.io.bus
+    mmioXbar.io.slaves(0) <> uart0.io.bus
+    mmioXbar.io.slaves(1) <> uart1.io.bus
+    mmioXbar.io.slaves(2) <> gpio0.io.bus
+    mmioXbar.io.slaves(3) <> gpio1.io.bus
+
     romController.io.rom <> rom.io
     ramController.io.sram <> ram.io
+
+    externalPins.uart0 <> uart0.io.pins
+    uart1.io.pins.rx := true.B
+
+    externalPins.mygpio.out := gpio0.io.pins.output
+    gpio0.io.pins.input := externalPins.mygpio.in
+
+
+    for (i <- 0 until 8) {
+        segmentDecoders(i).io.x := gpio1.io.pins.output(i*4+3, i*4)
+        externalPins.mygpio.seg(i) := segmentDecoders(i).io.y
+    }
+    gpio1.io.pins.input := 0.U(32.W)
+}
+
+class FpgaTop extends Module {
+    val io = IO(new Bundle {
+        val uart0 = new UartPins
+        val uart1 = new UartPins
+        val gpio0 = new GpioPins
+        val gpio1 = new GpioPins
+    })
+
+    val rcu = Module(new FpgaRcu)
+
+    withClockAndReset (rcu.io.clockOut, rcu.io.resetOut) {
+        val core = Module(new FpgaCpuCore)
+        val interConnect = Module(new Interconnect(2, Seq(
+            0x10000000l.U(32.W) -> (31, 28),
+            0x30000000l.U(32.W) -> (31, 28),
+            0x80000000l.U(32.W) -> (31, 28),
+        )))
+        val mmioXbar = Module(new Crossbar(Seq(
+            0x10000000l.U(32.W) -> (15, 12),
+            0x10001000l.U(32.W) -> (15, 12),
+            0x10002000l.U(32.W) -> (15, 12),
+            0x10003000l.U(32.W) -> (15, 12),
+        )))
+        val romController = Module(new RomController)
+        val ramController = Module(new SramController)
+        val uart0 = Module(new Uart)
+        val uart1 = Module(new Uart)
+        val gpio0 = Module(new Gpio)
+        val gpio1 = Module(new Gpio)
+        val rom = Module(new FpgaRom)
+        val ram = Module(new FpgaRam)
+
+        core.io.ifu <> interConnect.io.masters(0).asIfu
+        core.io.lsu <> interConnect.io.masters(1)
+        interConnect.io.slaves(0) <> mmioXbar.io.master
+        interConnect.io.slaves(1) <> romController.io.bus
+        interConnect.io.slaves(2) <> ramController.io.bus
+        mmioXbar.io.slaves(0) <> uart0.io.bus
+        mmioXbar.io.slaves(1) <> uart1.io.bus
+        mmioXbar.io.slaves(2) <> gpio0.io.bus
+        mmioXbar.io.slaves(3) <> gpio1.io.bus
+
+        romController.io.rom <> rom.io
+        ramController.io.sram <> ram.io
+
+        io.uart0 <> uart0.io.pins
+        io.uart1 <> uart1.io.pins
+
+        io.gpio0 <> gpio0.io.pins
+        io.gpio1 <> gpio1.io.pins
+    }
 }

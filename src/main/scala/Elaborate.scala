@@ -6,11 +6,6 @@ import simplesoc.io.VoteCounter
 import simplesoc.mem.SramController
 
 object Elaborate extends App {
-    private val chiselStageArgs = Array(
-        "Elaborate",
-        "--target-dir", "build/",
-    )
-
     // additional firrtl options
     // see https://github.com/OSCPU/chisel-playground
     // and https://github.com/chipsalliance/chisel/blob/main/src/test/scala-2/circtTests/stage/ChiselStageSpec.scala
@@ -26,5 +21,6 @@ object Elaborate extends App {
         ).reduce(_ + "," + _)
     )
 
-    ChiselStage.emitSystemVerilogFile(new SimTop, chiselStageArgs, firtoolOptions)
+    ChiselStage.emitSystemVerilogFile(new SimTop, Array("Elaborate", "--target-dir", "build/sim/"), firtoolOptions)
+    ChiselStage.emitSystemVerilogFile(new FpgaTop, Array("Elaborate", "--target-dir", "build/fpga"), firtoolOptions)
 }

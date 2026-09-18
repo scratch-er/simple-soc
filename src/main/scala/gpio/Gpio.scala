@@ -4,13 +4,15 @@ import chisel3._
 import chisel3.util._
 import simplesoc.bus.DataInterface
 
+class GpioPins extends Bundle {
+    val output = Output(UInt(32.W))
+    val input = Input(UInt(32.W))
+}
+
 class Gpio extends Module {
     val io = IO(new Bundle {
         val bus = new DataInterface
-        val pins = new Bundle {
-            val output = Output(UInt(32.W))
-            val input = Input(UInt(32.W))
-        }
+        val pins = new GpioPins
     })
 
     private val wen = WireInit(io.bus.reqValid && io.bus.wen)
