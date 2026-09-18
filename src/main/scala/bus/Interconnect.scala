@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 
 /*
- * This inter connect assumes these timing request:
+ * This interconnect assumes these timing request:
  *
  * - As long as `valid` is high on a rising edge, request or response is delivered, no back pressure.
  * - The response arrives on the next cycle of the request at earliest.
@@ -14,8 +14,8 @@ import chisel3.util._
  * THE NEXT CYCLE AFTER current response arrives.
  */
 
-class Interconnect(numMasters: Int, slaveAddrHi: Seq[(Int, Int)]) extends Module {
-    val numSlaves = slaveAddrHi.length
+class Interconnect(numMasters: Int, slaveAddrMap: Seq[(UInt, (Int, Int))]) extends Module {
+    val numSlaves = slaveAddrMap.length
 
     val io = IO(new Bundle {
         val masters = Vec(numMasters, new DataInterface)
@@ -38,9 +38,10 @@ class Interconnect(numMasters: Int, slaveAddrHi: Seq[(Int, Int)]) extends Module
 
     // This is valid the next cycle a request is made
     private val slaveSel = Seq.tabulate(numMasters, numSlaves){case (m, s) => {
-        val addrHiVal = slaveAddrHi(s)._1.U
-        val addrHiLen = slaveAddrHi(s)._2
-        reqBuffer(m).addr(31, 32-addrHiLen) === addrHiVal
+        val baseAddr = slaveAddrMap(s)._1
+        val hi = slaveAddrMap(s)._2._1
+        val lo = slaveAddrMap(s)._2._2
+        reqBuffer(m).addr(hi, lo) === baseAddr(hi, lo)
     }}
 
     // This is combinationally dependent from `slaveSel`,
