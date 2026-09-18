@@ -18,11 +18,21 @@ assign io_rdata = rdata;
 
 always @(posedge clock) begin
     if (io_ren) begin
+        `ifdef VERILATOR
         dpi_c_mem_read(io_addr, rdata_avoid_race);
+        `endif
+        `ifdef __ICARUS__
+        $mem_read(io_addr, rdata_avoid_race);
+        `endif
         rdata <= rdata_avoid_race;
     end
     if (io_wen) begin
+        `ifdef VERILATOR
         dpi_c_mem_write(io_addr, io_wdata);
+        `endif
+        `ifdef __ICARUS__
+        $mem_write(io_addr, io_wdata);
+        `endif
     end
 end
 
