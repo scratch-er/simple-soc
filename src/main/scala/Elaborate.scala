@@ -2,8 +2,6 @@ package simplesoc
 
 import chisel3._
 import circt.stage.ChiselStage
-import simplesoc.io.VoteCounter
-import simplesoc.mem.SramController
 
 object Elaborate extends App {
     // additional firrtl options
