@@ -2,6 +2,7 @@ package simplesoc.uart
 
 import chisel3._
 import chisel3.util._
+import simplesoc.bus.RegW
 import simplesoc.bus.DataInterface
 
 class UartPins extends Bundle  {
@@ -33,7 +34,7 @@ class Uart(debug: Boolean=false) extends Module {
     private val wen = WireInit(io.bus.reqValid && io.bus.wen)
 
     private val counter = RegInit(0.U(16.W))
-    private val divisor = RegInit(0.U(16.W))
+    private val divisor = RegW(0.U(16.W), 2.U(2.W), io.bus)
     private val counterRefill = WireInit(counter === 0.U)
     counter := Mux(counterRefill, divisor, counter-1.U)
 
@@ -53,10 +54,6 @@ class Uart(debug: Boolean=false) extends Module {
     // as long as the address offset is 0, the lowest bit is selected
     rxXBuffer.io.readPort.ready := ren && io.bus.addr(1, 0)===0.U
     rxXBuffer.io.readCe := true.B
-
-    divisor :=
-        Mux(wen && io.bus.wmask(3), io.bus.wdata(31, 24), divisor(15, 8)) ##
-        Mux(wen && io.bus.wmask(2), io.bus.wdata(23, 16), divisor(7, 0))
 
     io.bus.rdata :=
         divisor ## // byte 2, 3: divisor
