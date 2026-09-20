@@ -65,9 +65,19 @@ class SimCpuCore extends Module {
  * Modify these classes to suit your design.
  */
 
+// This generates clock used by the SoC from the clock source of the board
+// replace with what suits your board
 class GowinRPll extends ExtModule {
     val clkin  = IO(Input(Clock()))
     val clkout = IO(Output(Clock()))
+}
+
+// This generates sync active high reset for the SoC from the reset of the board
+// replace with what suits your board
+class GowinReset extends ExtModule {
+    val clock = IO(Input(Clock()))
+    val reset = IO(Input(Reset()))
+    val resetOut = IO(Output(Bool()))
 }
 
 /*
@@ -83,10 +93,15 @@ class FpgaRcu extends Module {
     })
 
     val pll = Module(new GowinRPll)
+    val gowinReset = Module(new GowinReset)
 
     pll.clkin := clock
     io.clockOut := pll.clkout
-    io.resetOut := !reset.asBool
+    // sync reset generation should be in the same clock domian with SoC
+    // or it will cause problems, or at least confuse the toolchain
+    gowinReset.clock := pll.clkout
+    gowinReset.reset := reset
+    io.resetOut := gowinReset.resetOut
 }
 
 /*
@@ -111,7 +126,7 @@ class GowinSP extends ExtModule {
     val ce  = IO(Input(Bool()))
     val oce = IO(Input(Bool()))
     val wre = IO(Input(Bool()))
-    val ad  = IO(Input(UInt(13.W)))
+    val ad  = IO(Input(UInt(14.W)))
     val din = IO(Input(UInt(32.W)))
     val dout = IO(Output(UInt(32.W)))
 }
@@ -141,7 +156,7 @@ class FpgaRam extends Module {
     ram.ce := io.ren || io.wen
     ram.oce := true.B
     ram.wre := io.wen
-    ram.ad := io.addr(14, 2)
+    ram.ad := io.addr(15, 2)
     ram.din := io.wdata
     io.rdata := ram.dout
 }
