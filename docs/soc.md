@@ -14,9 +14,10 @@ This project is a small SoC library written in Chisel: a bus fabric, memory cont
 | `RomController`, `SramController` | `src/main/scala/mem/RomController.scala`, `SramController.scala` | Bridge `DataInterface` to `RomInterface` / `SramInterface` |
 | `Uart` | `src/main/scala/uart/Uart.scala` | UART (`debug` variant adds TX capture for simulation) |
 | `Gpio`, `SegmentDecoder` | `src/main/scala/gpio/` | 32-bit GPIO, 7-segment decoder |
+| `Timer` | `src/main/scala/timer/Timer.scala` | Dual-stage timer with 4 PWM channels |
 | CPU / clock / memory black boxes | `src/main/scala/Port.scala` | Adapt your CPU, PLL, and vendor memory IP |
 
-Each module has its own document under `docs/` (`bus.md`, `interconnect.md`, `crossbar.md`, `ROM.md`, `SRAM.md`, `UART.md`, `GPIO.md`); read those for parameters, ports, and register maps.
+Each module has its own document under `docs/` (`bus.md`, `interconnect.md`, `crossbar.md`, `ROM.md`, `SRAM.md`, `UART.md`, `GPIO.md`, `timer.md`); read those for parameters, ports, and register maps.
 
 ## The assembly pattern
 
@@ -25,7 +26,7 @@ Each module has its own document under `docs/` (`bus.md`, `interconnect.md`, `cr
 1. **CPU** — instantiate your core wrapper (`SimCpuCore` / `FpgaCpuCore`). Its `ifu` and `lsu` ports are the bus masters. If the instruction-fetch side needs a `DataInterface`, use `asIfu` to adapt it (as done for `core.io.ifu`).
 2. **Interconnect** — `Interconnect(numMasters, slaveAddrMap)` arbitrates the masters between coarse address regions. The first argument is the master count; the second is the coarse address map.
 3. **MMIO crossbar** — hang a `Crossbar(slaveAddrMap)` off one interconnect slave to fan out to peripherals (`Uart`, `Gpio`, ...). The example tops give each peripheral a 4 KiB-aligned base, but nothing enforces this — see below.
-4. **Memory controllers** — connect the other interconnect slaves to `RomController` / `SramController`, and connect those to your memory implementation (`SimulatedRom`/`SimulatedSram` for simulation, `FpgaRom`/`FpgaRam` for FPGA).
+4. **Memory controllers** — connect the other interconnect slaves to `RomController` / `SramController`, and connect those to your memory implementation (`SimulatedRom`/`SimulatedSram` for simulation; for FPGA, a single initialized RAM such as `FpgaRam` — most FPGAs implement "ROM" as initialized RAM with no write port, so a separate ROM is unnecessary, and the program simply lives in RAM).
 5. **Pin wiring** — connect peripheral pins to your top-level IO.
 
 ## Designing an address map

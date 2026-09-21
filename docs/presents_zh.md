@@ -19,6 +19,7 @@ SimTop 和 FpgaTop 是本项目的两个顶层设计，均在 `src/main/scala/So
 | `RomController` / `SramController` | `src/main/scala/mem/` | 总线到存储器的桥 |
 | `Uart(true)` ×2 | `src/main/scala/uart/Uart.scala` | UART,启用调试模式 |
 | `Gpio` ×2 | `src/main/scala/gpio/Gpio.scala` | 32 位 GPIO |
+| `Timer` ×2 | `src/main/scala/timer/Timer.scala` | 双级定时器,各带 4 路 PWM 通道 |
 | `SegmentDecoder` ×8 | `src/main/scala/gpio/SegmentDecoder.scala` | 7 段数码管译码器 |
 | `SimulatedRom` / `SimulatedSram` | `src/main/scala/Port.scala` | 封装 `SimulatedMem`(`src/main/sv/SimulatedMem.sv`) |
 
@@ -41,15 +42,15 @@ SimTop 和 FpgaTop 是本项目的两个顶层设计，均在 `src/main/scala/So
 
 ## FpgaTop
 
-定义于 `src/main/scala/Soc.scala:69`。
+定义于 `src/main/scala/Soc.scala:76`。
 
 与 SimTop 的差异:
 
 - 整个 SoC 被包裹在 `withClockAndReset(rcu.io.clockOut, rcu.io.resetOut)` 中;`FpgaRcu`(`src/main/scala/Port.scala`)基于板载时钟/复位生成系统时钟(通过 Gowin PLL)和一个**高有效**的复位。
 - `FpgaCpuCore` 封装了 FPGA CPU 黑盒(`Npc`)。
 - UART 不以调试模式例化(没有 `UartTxCapture`)。
-- 存储器为 `FpgaRom` / `FpgaRam`,它们封装了 Gowin IP(`GowinPRom` / `GowinSP`)。
-- 两个 UART 和两个 GPIO 均引出为引脚。
+- 没有 ROM 区域,也没有 `RomController`——唯一的存储器是 `FpgaRam`,它封装了 Gowin RAM IP(`GowinSP`,64 KiB)。程序被加载到初始化后的 RAM 中。绝大多数 FPGA 都支持存储器初始化,而 FPGA 中的 “ROM” 通常只是不带写端口的初始化 RAM,因此单独的 ROM 没有任何好处。这也保证了仿真顶层与 FPGA 顶层的一致性:只要程序加载到 RAM、复位后从 RAM 运行、不访问 ROM 区域,`SimTop` 的行为就与 `FpgaTop` 完全一致。
+- 两个 UART、两个 GPIO 和两个定时器(PWM 输出)均引出为引脚。
 
 外部引脚:
 
@@ -57,12 +58,13 @@ SimTop 和 FpgaTop 是本项目的两个顶层设计，均在 `src/main/scala/So
 |---|---|---|
 | `io.uart0` / `io.uart1` | in/out | `UartPins`(tx、rx) |
 | `io.gpio0` / `io.gpio1` | in/out | `GpioPins`(input、output),各 32 位 |
+| `io.timer0` / `io.timer1` | output | `PwmOutput`(pwm0–pwm3),各 4 路通道 |
 
 引脚约束和 PLL 配置位于 FPGA 厂商工具中,不在本项目范围内。
 
-## 共享地址映射
+## 地址映射
 
-两个顶层使用相同的存储器映射:
+`SimTop` 使用:
 
 | 区域 | 基地址 | 译码位 | 目标 |
 |---|---|---|---|
@@ -70,7 +72,9 @@ SimTop 和 FpgaTop 是本项目的两个顶层设计，均在 `src/main/scala/So
 | ROM | `0x3000_0000` | (31, 28) | RomController |
 | SRAM | `0x8000_0000` | (31, 28) | SramController |
 
-MMIO crossbar 的从设备(本例中按第 15:12 位译码——窗口大小不由项目强制约束):
+`FpgaTop` 只译码 MMIO 和 SRAM(没有 ROM 区域);程序存放在 64 KiB 的初始化 RAM 中。仿真中的 ROM 和 RAM 大小并不固定——仿真存储器只受地址空间限制。只要软件加载到 RAM 并从 RAM 运行、不访问 ROM,两个顶层就是一致的。
+
+MMIO crossbar 的从设备(两个顶层相同;本例中按第 15:12 位译码——窗口大小不由项目强制约束):
 
 | 外设 | 基地址 |
 |---|---|
@@ -78,6 +82,8 @@ MMIO crossbar 的从设备(本例中按第 15:12 位译码——窗口大小不�
 | uart1 | `0x1000_1000` |
 | gpio0 | `0x1000_2000` |
 | gpio1 | `0x1000_3000` |
+| timer0 | `0x1000_4000` |
+| timer1 | `0x1000_5000` |
 
 ## Elaboration(展开生成)
 
@@ -90,7 +96,7 @@ sbt "runMain simplesoc.Elaborate"
 每次展开会写出一个自包含的目录:
 
 - `build/sim/` —— `SimTop` 的每个模块各为一个独立的 `.sv` 文件(`SimTop.sv`、`SimCpuCore.sv`、`Interconnect.sv`、……、`SegmentDecoder.sv`),外加按编译顺序列出它们的 `filelist.f`。
-- `build/fpga/` —— `FpgaTop` 同理(`FpgaTop.sv`、`FpgaCpuCore.sv`、`FpgaRcu.sv`、`FpgaRom.sv`、`FpgaRam.sv`、……),外加其自己的 `filelist.f`。
+- `build/fpga/` —— `FpgaTop` 同理(`FpgaTop.sv`、`FpgaCpuCore.sv`、`FpgaRcu.sv`、`FpgaRam.sv`、……),外加其自己的 `filelist.f`。
 
 两个目录还会各得到一个 `verification/` 子目录。它同样由 Chisel 生成(例如 assert/assume/cover 层等验证附属产物),与本项目无关——流程中没有任何环节会读取它。生成的 SystemVerilog 使用了 firtool 的 lowering 选项 `disallowLocalVariables, disallowPackedArrays, locationInfoStyle=wrapInAtSquareBracket, noAlwaysComb`,选择这些选项是为了兼容 yosys 和 iverilog。`Elaborate` 目前是唯一的 `App`,因此直接 `sbt run` 也可以。
 
@@ -117,5 +123,5 @@ CPU 通过两个标准接口接入(见 `src/main/scala/bus/Interface.scala`):
 所有与板卡相关的部分都集中在 `src/main/scala/Port.scala`:
 
 - **时钟/复位:** 在 `FpgaRcu` 内部把 `GowinRPll` 替换为你所用厂商的 PLL(如果板载时钟已是系统时钟,也可以用一个普通的时钟缓冲)。无论板载复位极性如何,`FpgaRcu.io.resetOut` 必须是高有效;当前实现是对低有效的板载复位取反(`!reset.asBool`)。
-- **存储器:** 把 `GowinPRom` / `GowinSP` 替换为厂商工具生成的 ROM/RAM IP。封装层 `FpgaRom` / `FpgaRam` 把 `RomInterface` / `SramInterface` 适配到厂商 IP;请调整地址切片(`io.addr(14, 2)`,即 32 KiB、按字寻址)以匹配你的 IP 深度。预初始化的 ROM 内容由厂商工具生成,不在本项目范围内。
+- **存储器:** 把 `GowinSP` 替换为厂商工具生成的 RAM IP。封装层 `FpgaRam` 把 `SramInterface` 适配到厂商 IP;请调整地址切片(`io.addr(15, 2)`,即 64 KiB、按字寻址)以匹配你的 IP 深度。RAM 的初始内容(程序镜像)在厂商工具中生成,不在本项目范围内。如果确实想要一个只读区域,注意绝大多数 FPGA 的 “ROM” 实现就是不带写端口的初始化 RAM,因此直接不使用 `wen` 即可——单独的 ROM 原语没有任何好处。
 - **引脚:** 在你板卡的约束文件(厂商工具)中,把顶层引脚(`io.uart*`、`io.gpio*`)以及板载时钟/复位映射到物理引脚。本仓库中不包含任何约束文件。

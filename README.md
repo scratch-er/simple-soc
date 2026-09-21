@@ -15,7 +15,8 @@ One objective of this project is to enable quick simulation and FPGA implementat
 - **SramController**: SRAM controller, full-word writes in 1 cycle, partial writes via a 2-cycle read-modify-write.
 - **UART**: 8-bit UART with programmable baud rate (clock-divisor register), 1-byte TX/RX buffers, 2-stage RX synchronizer.
 - **GPIO**: 32-bit GPIO with byte-write strobes, 2-stage input synchronizer, and an optional active-low 7-segment display decoder.
-- **Two ready-made SoC tops**: `SimTop` for simulation (pins compatible with ysyxSoC, DPI-C/VPI simulation memory hooks) and `FpgaTop` for Gowin FPGAs (PLL, on-chip ROM/RAM IP).
+- **Timer**: 16-bit dual-stage timer (prescaler + counter with wrap registers) with four PWM compare channels per timer.
+- **Two ready-made SoC tops**: `SimTop` for simulation (pins compatible with ysyxSoC, DPI-C/VPI simulation memory hooks) and `FpgaTop` for Gowin FPGAs (PLL, on-chip RAM IP). `FpgaTop` uses a single memory — the program is loaded into initialized on-chip RAM; no separate ROM (see [docs/presents.md](docs/presents.md)).
 
 ## Memory map
 
@@ -24,10 +25,12 @@ The CPU's instruction-fetch port is interconnect master 0 and its load-store por
 | Region    | Base address | Target | Notes |
 |-----------|--------------|--------|-------|
 | MMIO      | `0x1000_0000` | Crossbar | 4 KiB windows decoded by `addr[15:12]` |
-| ROM       | `0x3000_0000` | RomController | 32 KiB |
-| SRAM      | `0x8000_0000` | SramController | 32 KiB |
+| ROM       | `0x3000_0000` | RomController | SimTop only; size limited only by the address space |
+| SRAM      | `0x8000_0000` | SramController | SimTop: size limited only by the address space; FpgaTop: 64 KiB |
 
-MMIO devices behind the crossbar:
+`FpgaTop` decodes only MMIO and SRAM: its single memory is the on-chip RAM, initialized with the program in the FPGA vendor tooling. `SimTop` additionally has a ROM region; both tops work consistently as long as the program is loaded into RAM and runs from RAM without touching the ROM (see [docs/presents.md](docs/presents.md)).
+
+MMIO devices behind the crossbar (same in both tops):
 
 | Device | Base address |
 |--------|--------------|
@@ -35,21 +38,8 @@ MMIO devices behind the crossbar:
 | uart1  | `0x1000_1000` |
 | gpio0  | `0x1000_2000` |
 | gpio1  | `0x1000_3000` |
-
-UART registers (word-addressed, `addr[1:0]` selects the byte within the register word):
-
-| Offset | Name | Description |
-|--------|------|-------------|
-| 0 | data | RX data (pops the buffer on read) / TX data (written when `wmask[0]` is set) |
-| 1 | status | bit 0 = TX ready, bit 1 = RX valid |
-| 2 | divisor | baud-rate divisor: bit clock period in core-clock ticks (low byte at offset 2, high byte at offset 3) |
-
-GPIO registers:
-
-| Offset | Name | Description |
-|--------|------|-------------|
-| 0 | output | 32-bit output value; byte writes only update the strobed bytes |
-| 4 | input  | 32-bit sampled input value |
+| timer0 | `0x1000_4000` |
+| timer1 | `0x1000_5000` |
 
 ## Repository layout
 
@@ -62,6 +52,7 @@ src/main/scala/
   mem/                 RomController, SramController
   uart/                Uart, UartTx, UartRx, CrossBuffer
   gpio/                Gpio, SegmentDecoder
+  timer/               Timer (dual-stage counters, 4 PWM channels)
 src/main/sv/           Verilog helpers: SimulatedMem (DPI-C/VPI memory), UartTxCapture
 build/sim/             Pre-generated SystemVerilog and filelist for SimTop
 build/fpga/            Pre-generated SystemVerilog and filelist for FpgaTop
@@ -86,7 +77,7 @@ The output lands in `build/sim/` and `build/fpga/`, each with a `filelist.f`. Th
 
 ### FPGA
 
-`FpgaTop` targets Gowin FPGAs: clocking comes from a Gowin PLL (`GowinRPll`) with a reset controller, and the ROM/RAM are Gowin on-chip memory IP (`GowinPRom`, `GowinSP`, 32 KiB each, instantiated as black boxes). PLL configuration and IP generation are done in the Gowin vendor tooling, outside this repository.
+`FpgaTop` targets Gowin FPGAs: clocking comes from a Gowin PLL (`GowinRPll`) with a reset controller, and the memory is a Gowin on-chip RAM IP (`GowinSP`, 64 KiB, instantiated as a black box). There is no separate ROM: most FPGAs support memory initialization, and an FPGA "ROM" is usually just initialized RAM with no write port, so a dedicated ROM buys nothing. The program image is loaded into the initialized RAM. This also keeps `SimTop` consistent with `FpgaTop`: if the program is loaded into RAM and reset to run from RAM, without touching the ROM region, both tops behave the same way. (In simulation the ROM/RAM sizes are not fixed — the simulated memories are limited only by the address space.) PLL configuration and IP generation are done in the Gowin vendor tooling, outside this repository.
 
 ## Building your own SoC
 
@@ -101,6 +92,7 @@ SimpleSoc is a library, not a finished chip: `SimTop`/`FpgaTop` are examples to 
 - [docs/SRAM.md](docs/SRAM.md) — SRAM controller and read-modify-write behavior
 - [docs/UART.md](docs/UART.md) — UART registers and baud-rate programming
 - [docs/GPIO.md](docs/GPIO.md) — GPIO registers and the 7-segment decoder
+- [docs/timer.md](docs/timer.md) — timer registers and PWM channels
 - [docs/soc.md](docs/soc.md) — how to assemble your own SoC
 - [docs/presents.md](docs/presents.md) — SimTop vs FpgaTop and porting guide
 

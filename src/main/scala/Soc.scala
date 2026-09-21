@@ -6,6 +6,7 @@ import simplesoc.bus._
 import simplesoc.mem._
 import simplesoc.uart._
 import simplesoc.gpio._
+import simplesoc.timer._
 
 class SimTop extends Module {
     val externalPins = IO(new Bundle {
@@ -28,6 +29,8 @@ class SimTop extends Module {
         0x10001000l.U(32.W) -> (15, 12),
         0x10002000l.U(32.W) -> (15, 12),
         0x10003000l.U(32.W) -> (15, 12),
+        0x10004000l.U(32.W) -> (15, 12),
+        0x10005000l.U(32.W) -> (15, 12),
     )))
     val romController = Module(new RomController)
     val ramController = Module(new SramController)
@@ -35,6 +38,8 @@ class SimTop extends Module {
     val uart1 = Module(new Uart(true))
     val gpio0 = Module(new Gpio)
     val gpio1 = Module(new Gpio)
+    val timer0 = Module(new Timer)
+    val timer1 = Module(new Timer)
     val rom = Module(new SimulatedRom)
     val ram = Module(new SimulatedSram)
     val segmentDecoders = Seq.fill(8)(Module(new SegmentDecoder))
@@ -48,6 +53,8 @@ class SimTop extends Module {
     mmioXbar.io.slaves(1) <> uart1.io.bus
     mmioXbar.io.slaves(2) <> gpio0.io.bus
     mmioXbar.io.slaves(3) <> gpio1.io.bus
+    mmioXbar.io.slaves(4) <> timer0.io.bus
+    mmioXbar.io.slaves(5) <> timer1.io.bus
 
     romController.io.rom <> rom.io
     ramController.io.sram <> ram.io
@@ -72,6 +79,8 @@ class FpgaTop extends Module {
         val uart1 = new UartPins
         val gpio0 = new GpioPins
         val gpio1 = new GpioPins
+        val timer0 = new PwmOutput
+        val timer1 = new PwmOutput
     })
 
     val rcu = Module(new FpgaRcu)
@@ -80,7 +89,6 @@ class FpgaTop extends Module {
         val core = Module(new FpgaCpuCore)
         val interConnect = Module(new Interconnect(2, Seq(
             0x10000000l.U(32.W) -> (31, 28),
-            0x30000000l.U(32.W) -> (31, 28),
             0x80000000l.U(32.W) -> (31, 28),
         )))
         val mmioXbar = Module(new Crossbar(Seq(
@@ -88,27 +96,29 @@ class FpgaTop extends Module {
             0x10001000l.U(32.W) -> (15, 12),
             0x10002000l.U(32.W) -> (15, 12),
             0x10003000l.U(32.W) -> (15, 12),
+            0x10004000l.U(32.W) -> (15, 12),
+            0x10005000l.U(32.W) -> (15, 12),
         )))
-        val romController = Module(new RomController)
         val ramController = Module(new SramController)
         val uart0 = Module(new Uart)
         val uart1 = Module(new Uart)
         val gpio0 = Module(new Gpio)
         val gpio1 = Module(new Gpio)
-        val rom = Module(new FpgaRom)
+        val timer0 = Module(new Timer)
+        val timer1 = Module(new Timer)
         val ram = Module(new FpgaRam)
 
         core.io.ifu <> interConnect.io.masters(0).asIfu
         core.io.lsu <> interConnect.io.masters(1)
         interConnect.io.slaves(0) <> mmioXbar.io.master
-        interConnect.io.slaves(1) <> romController.io.bus
-        interConnect.io.slaves(2) <> ramController.io.bus
+        interConnect.io.slaves(1) <> ramController.io.bus
         mmioXbar.io.slaves(0) <> uart0.io.bus
         mmioXbar.io.slaves(1) <> uart1.io.bus
         mmioXbar.io.slaves(2) <> gpio0.io.bus
         mmioXbar.io.slaves(3) <> gpio1.io.bus
+        mmioXbar.io.slaves(4) <> timer0.io.bus
+        mmioXbar.io.slaves(5) <> timer1.io.bus
 
-        romController.io.rom <> rom.io
         ramController.io.sram <> ram.io
 
         io.uart0 <> uart0.io.pins
@@ -116,5 +126,8 @@ class FpgaTop extends Module {
 
         io.gpio0 <> gpio0.io.pins
         io.gpio1 <> gpio1.io.pins
+
+        io.timer0 <> timer0.io.pins
+        io.timer1 <> timer1.io.pins
     }
 }

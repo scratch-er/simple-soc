@@ -14,9 +14,10 @@
 | `RomController`、`SramController` | `src/main/scala/mem/RomController.scala`、`SramController.scala` | 将 `DataInterface` 桥接到 `RomInterface` / `SramInterface` |
 | `Uart` | `src/main/scala/uart/Uart.scala` | UART(`debug` 变体在仿真中增加 TX 捕获) |
 | `Gpio`、`SegmentDecoder` | `src/main/scala/gpio/` | 32 位 GPIO、数码管译码器 |
+| `Timer` | `src/main/scala/timer/Timer.scala` | 带 4 路 PWM 通道的双级定时器 |
 | CPU / 时钟 / 存储黑盒 | `src/main/scala/Port.scala` | 适配你的 CPU、PLL 和厂商存储 IP |
 
-每个模块在 `docs/` 下都有各自的文档([bus](bus_zh.md)、[interconnect](interconnect_zh.md)、[crossbar](crossbar_zh.md)、[ROM](ROM_zh.md)、[SRAM](SRAM_zh.md)、[UART](UART_zh.md)、[GPIO](GPIO_zh.md));参数、端口和寄存器映射请阅读这些文档。
+每个模块在 `docs/` 下都有各自的文档([bus](bus_zh.md)、[interconnect](interconnect_zh.md)、[crossbar](crossbar_zh.md)、[ROM](ROM_zh.md)、[SRAM](SRAM_zh.md)、[UART](UART_zh.md)、[GPIO](GPIO_zh.md)、[timer](timer_zh.md));参数、端口和寄存器映射请阅读这些文档。
 
 ## 组装模式
 
@@ -25,7 +26,7 @@
 1. **CPU** —— 实例化你的核封装(`SimCpuCore` / `FpgaCpuCore`)。其 `ifu` 和 `lsu` 端口就是总线主设备。如果取指侧需要 `DataInterface`,用 `asIfu` 进行适配(如同对 `core.io.ifu` 所做的那样)。
 2. **Interconnect** —— `Interconnect(numMasters, slaveAddrMap)` 在若干粗粒度地址区域之间对主设备进行仲裁。第一个参数是主设备数量;第二个是粗粒度地址映射。
 3. **MMIO crossbar** —— 将 `Crossbar(slaveAddrMap)` 挂在 interconnect 的一个从设备上,再扇出到外设(`Uart`、`Gpio` ……)。示例顶层给每个外设分配 4 KiB 对齐的基地址,但没有任何机制强制这样做——见下文。
-4. **存储控制器** —— 将 interconnect 的其他从设备连接到 `RomController` / `SramController`,再把它们接到你的存储实现(仿真用 `SimulatedRom`/`SimulatedSram`,FPGA 用 `FpgaRom`/`FpgaRam`)。
+4. **存储控制器** —— 将 interconnect 的其他从设备连接到 `RomController` / `SramController`,再把它们接到你的存储实现(仿真用 `SimulatedRom`/`SimulatedSram`;FPGA 用单一的可初始化 RAM,例如 `FpgaRam`——绝大多数 FPGA 的 “ROM” 实现就是不带写端口的初始化 RAM,因此没有必要单独的 ROM,程序直接放在 RAM 中)。
 5. **引脚连线** —— 将外设引脚连接到顶层 IO。
 
 ## 设计地址映射

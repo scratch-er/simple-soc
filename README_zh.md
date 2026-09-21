@@ -17,7 +17,8 @@ SimpleSoc 是一个用 [Chisel](https://www.chisel-lang.org/) 编写的小型 32
 - **SramController**:SRAM 控制器,整字写入 1 拍完成,部分写通过 2 拍的读-改-写完成。
 - **UART**:8 位 UART,波特率可编程(时钟分频寄存器),TX/RX 各 1 字节缓冲,2 级 RX 同步器。
 - **GPIO**:32 位 GPIO,带字节写选通、2 级输入同步器,以及可选的低有效七段数码管译码器。
-- **两个现成的 SoC 顶层**:`SimTop` 用于仿真(引脚与 ysyxSoC 兼容,带 DPI-C/VPI 仿真存储器钩子);`FpgaTop` 面向 Gowin FPGA(PLL、片上 ROM/RAM IP)。
+- **Timer**:16 位双级定时器(预分频级 + 计数级,各带 wrap 寄存器),每个定时器有 4 路 PWM 比较通道。
+- **两个现成的 SoC 顶层**:`SimTop` 用于仿真(引脚与 ysyxSoC 兼容,带 DPI-C/VPI 仿真存储器钩子);`FpgaTop` 面向 Gowin FPGA(PLL、片上 RAM IP)。`FpgaTop` 只使用单一的存储器——程序加载到可初始化的片上 RAM 中,不单独设 ROM(见 [docs/presents_zh.md](docs/presents_zh.md))。
 
 ## 存储映射
 
@@ -26,10 +27,12 @@ CPU 的取指端口是互连的主设备 0, load-store 端口是主设备 1。�
 | 区域   | 基地址        | 目标            | 说明 |
 |--------|---------------|-----------------|------|
 | MMIO   | `0x1000_0000` | Crossbar        | 4 KiB 窗口,由 `addr[15:12]` 译码 |
-| ROM    | `0x3000_0000` | RomController   | 32 KiB |
-| SRAM   | `0x8000_0000` | SramController  | 32 KiB |
+| ROM    | `0x3000_0000` | RomController   | 仅 SimTop;大小仅受地址空间限制 |
+| SRAM   | `0x8000_0000` | SramController  | SimTop:大小仅受地址空间限制;FpgaTop:64 KiB |
 
-Crossbar 后的 MMIO 设备:
+`FpgaTop` 只译码 MMIO 和 SRAM:其唯一的存储器是片上 RAM,程序在 FPGA 厂商工具中初始化为 RAM 的内容。`SimTop` 额外有一个 ROM 区域;只要程序加载到 RAM 中并从 RAM 运行、不访问 ROM,两个顶层的行为就是一致的(见 [docs/presents_zh.md](docs/presents_zh.md))。
+
+Crossbar 后的 MMIO 设备(两个顶层相同):
 
 | 设备   | 基地址        |
 |--------|---------------|
@@ -37,21 +40,8 @@ Crossbar 后的 MMIO 设备:
 | uart1  | `0x1000_1000` |
 | gpio0  | `0x1000_2000` |
 | gpio1  | `0x1000_3000` |
-
-UART 寄存器(按字寻址,`addr[1:0]` 选择寄存器字内的字节):
-
-| 偏移 | 名称      | 说明 |
-|------|-----------|------|
-| 0    | data      | RX 数据(读时弹出缓冲)/ TX 数据(置位 `wmask[0]` 时写入) |
-| 1    | status    | 位 0 = TX 就绪,位 1 = RX 有效 |
-| 2    | divisor   | 波特率分频:位时钟周期(以核心时钟拍数计),低字节在偏移 2,高字节在偏移 3 |
-
-GPIO 寄存器:
-
-| 偏移 | 名称   | 说明 |
-|------|--------|------|
-| 0    | output | 32 位输出值;字节写只更新被选通的字节 |
-| 4    | input  | 32 位采样输入值 |
+| timer0 | `0x1000_4000` |
+| timer1 | `0x1000_5000` |
 
 ## 仓库结构
 
@@ -64,6 +54,7 @@ src/main/scala/
   mem/                 RomController、SramController
   uart/                Uart、UartTx、UartRx、CrossBuffer
   gpio/                Gpio、SegmentDecoder
+  timer/               Timer(双级计数器,4 路 PWM 通道)
 src/main/sv/           Verilog 辅助模块:SimulatedMem(DPI-C/VPI 存储器)、UartTxCapture
 build/sim/             预生成的 SimTop SystemVerilog 及 filelist
 build/fpga/            预生成的 FpgaTop SystemVerilog 及 filelist
@@ -88,7 +79,7 @@ sbt "runMain simplesoc.Elaborate"
 
 ### FPGA
 
-`FpgaTop` 面向 Gowin FPGA:时钟来自 Gowin PLL(`GowinRPll`)及复位控制器;ROM/RAM 为 Gowin 片上存储器 IP(`GowinPRom`、`GowinSP`,各 32 KiB,以黑盒方式实例化)。PLL 配置与 IP 生成在 Gowin 厂商工具中完成,不属于本仓库的内容。
+`FpgaTop` 面向 Gowin FPGA:时钟来自 Gowin PLL(`GowinRPll`)及复位控制器;存储器为 Gowin 片上 RAM IP(`GowinSP`,64 KiB,以黑盒方式实例化)。这里没有单独的 ROM:绝大多数 FPGA 都支持存储器初始化,而 FPGA 中的 “ROM” 通常只是不带写端口的初始化 RAM,因此单独的 ROM 没有任何好处。程序镜像直接加载到初始化后的 RAM 中。这也保证了 `SimTop` 与 `FpgaTop` 的一致性:只要程序加载到 RAM、复位后从 RAM 运行、不访问 ROM 区域,两个顶层的工作方式就是一致的。(仿真中的 ROM/RAM 大小并不固定——仿真存储器只受地址空间限制。)PLL 配置与 IP 生成在 Gowin 厂商工具中完成,不属于本仓库的内容。
 
 ## 构建你自己的 SoC
 
@@ -103,6 +94,7 @@ SimpleSoc 是一个库,而不是一颗成品芯片:`SimTop`/`FpgaTop` 是供你�
 - [docs/SRAM_zh.md](docs/SRAM_zh.md) — SRAM 控制器与读-改-写行为
 - [docs/UART_zh.md](docs/UART_zh.md) — UART 寄存器与波特率编程
 - [docs/GPIO_zh.md](docs/GPIO_zh.md) — GPIO 寄存器与七段数码管译码器
+- [docs/timer_zh.md](docs/timer_zh.md) — 定时器寄存器与 PWM 通道
 - [docs/soc_zh.md](docs/soc_zh.md) — 如何组装自己的 SoC
 - [docs/presents_zh.md](docs/presents_zh.md) — SimTop 与 FpgaTop 对比及移植指南
 
