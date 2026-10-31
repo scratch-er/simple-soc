@@ -20,6 +20,18 @@ SimpleSoc 是一个用 [Chisel](https://www.chisel-lang.org/) 编写的小型 32
 - **Timer**:16 位双级定时器(预分频级 + 计数级,各带 wrap 寄存器),每个定时器有 4 路 PWM 比较通道。
 - **两个现成的 SoC 顶层**:`SimTop` 用于仿真(引脚与 ysyxSoC 兼容,带 DPI-C/VPI 仿真存储器钩子);`FpgaTop` 面向 Gowin FPGA(PLL、片上 RAM IP)。`FpgaTop` 只使用单一的存储器——程序加载到可初始化的片上 RAM 中,不单独设 ROM(见 [docs/presents_zh.md](docs/presents_zh.md))。
 
+## 快速上手
+
+需要 sbt 来展开(elaborate)该 SoC。运行以下命令为两个顶层模块配置生成 SystemVerilog:
+
+```
+sbt "runMain simplesoc.Elaborate"
+```
+
+输出位于 `build/sim/` 和 `build/fpga/`,各自带一个 `filelist.f`。lowering 选项针对 Yosys 和 Icarus Verilog 的兼容性选取(无局部变量、无压缩数组、无 `always_comb`)。
+
+在 [nvboard-demo/](nvboard-demo/) 目录下有一个最小演示,内含 RISC-V 内核并连接 NVBoard。为该演示构建 workload 最快捷的方式是使用 [Sonnet SDK](https://gitlink.org.cn/foobat/sonnet-sdk)。可以使用 `simplesoc` BSP 和 `simplesoc-sram` BSP 分别对应本 SoC 的两种配置。该 SDK 还提供了可直接构建运行的示例。
+
 ## 存储映射
 
 CPU 的取指端口是互连的主设备 0, load-store 端口是主设备 1。在示例顶层中,地址译码使用 `addr[31:28]`(此布局只是示例,并非要求——译码位和区域大小由你自己选择):
@@ -60,18 +72,6 @@ build/sim/             预生成的 SimTop SystemVerilog 及 filelist
 build/fpga/            预生成的 FpgaTop SystemVerilog 及 filelist
 docs/                  各组件的详细文档
 ```
-
-## 快速上手
-
-依赖:JDK 和 sbt(项目固定 sbt 2.0.0,见 `project/build.properties`)。使用 Chisel 7.15 / Scala 2.13。
-
-为两个顶层生成 SystemVerilog:
-
-```
-sbt "runMain simplesoc.Elaborate"
-```
-
-输出位于 `build/sim/` 和 `build/fpga/`,各自带一个 `filelist.f`。 lowering 选项针对 Yosys 和 Icarus Verilog 的兼容性选取(无局部变量、无压缩数组、无 `always_comb`)。
 
 ### 仿真
 

@@ -18,6 +18,18 @@ One objective of this project is to enable quick simulation and FPGA implementat
 - **Timer**: 16-bit dual-stage timer (prescaler + counter with wrap registers) with four PWM compare channels per timer.
 - **Two ready-made SoC tops**: `SimTop` for simulation (pins compatible with ysyxSoC, DPI-C/VPI simulation memory hooks) and `FpgaTop` for Gowin FPGAs (PLL, on-chip RAM IP). `FpgaTop` uses a single memory — the program is loaded into initialized on-chip RAM; no separate ROM (see [docs/presents.md](docs/presents.md)).
 
+## Getting Started
+
+Sbt is required to elaborate this SoC. Run this command to generate SystemVerilog for both top module profiles:
+
+```
+sbt "runMain simplesoc.Elaborate"
+```
+
+The output lands in `build/sim/` and `build/fpga/`, each with a `filelist.f`. The lowering options are chosen for compatibility with Yosys and Icarus Verilog (no local variables, no packed arrays, no `always_comb`).
+
+You can find a minimal demo, with a RISC-V core and connected to NVBoard, at [nvboard-demo/](nvboard-demo/). The quickest way for building a workload for this demo is using [Sonnet SDK](https://gitlink.org.cn/foobat/sonnet-sdk). You can use the `simplesoc` BSP and the `simplesoc-sram` BSP for the two profiles of this SoC. This SDK also provides examples that are just ready to be built and run.
+
 ## Memory map
 
 The CPU's instruction-fetch port is interconnect master 0 and its load-store port is master 1. In the example tops, address decoding uses `addr[31:28]` (this layout is an example, not a requirement — decode bits and region sizes are yours to choose):
@@ -58,18 +70,6 @@ build/sim/             Pre-generated SystemVerilog and filelist for SimTop
 build/fpga/            Pre-generated SystemVerilog and filelist for FpgaTop
 docs/                  Detailed documentation of each component
 ```
-
-## Getting started
-
-Requirements: a JDK, and sbt (the project pins sbt 2.0.0, see `project/build.properties`). Chisel 7.15 on Scala 2.13 is used.
-
-Generate SystemVerilog for both tops:
-
-```
-sbt "runMain simplesoc.Elaborate"
-```
-
-The output lands in `build/sim/` and `build/fpga/`, each with a `filelist.f`. The lowering options are chosen for compatibility with Yosys and Icarus Verilog (no local variables, no packed arrays, no `always_comb`).
 
 ### Simulation
 
